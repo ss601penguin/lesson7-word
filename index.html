@@ -2,6 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>自製電子書 - 泰山國小資源班國語學習單（康軒二年級第七課）</title>
   <style>
     @page { size: A4; margin: 12mm 15mm; }
@@ -80,7 +81,7 @@
     /* A4 頁面容器 */
     .pages-container { padding: 20px 0 40px 0; }
     .page {
-      width: 210mm; min-height: 297mm; padding: 14mm 16mm; margin: 0 auto 25px auto;
+      width: 210mm; max-width: 96vw; min-height: 297mm; padding: 14mm 16mm; margin: 0 auto 25px auto;
       background: #ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.15);
       page-break-after: always; break-after: page; position: relative;
     }
@@ -88,7 +89,7 @@
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       z-index: 20; pointer-events: none;
     }
-    body.pen-mode .drawing-canvas { pointer-events: auto; cursor: crosshair; }
+    body.pen-mode .drawing-canvas { pointer-events: auto; cursor: crosshair; touch-action: none; }
 
     /* 頁面標題與學習單表頭 */
     .main-title {
@@ -115,6 +116,7 @@
     /* 逐題闖關進度列 (僅螢幕顯示) */
     .step-progress-bar {
       display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
       background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px;
       padding: 8px 14px; margin-bottom: 16px;
     }
@@ -142,7 +144,7 @@
       background: #f1f5f9; color: #94a3b8; cursor: not-allowed; opacity: 0.75;
     }
 
-    /* 選擇題垂直對齊結構 */
+    /* 選擇題區塊結構 */
     .qa-block {
       display: flex; flex-direction: column;
       margin-bottom: 16px; padding: 12px 14px;
@@ -200,7 +202,7 @@
       box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
     }
 
-    /* 選項按鍵設計 (左、中、右橫向三欄大按鍵＋寬間距，降低誤觸率) */
+    /* 選項按鍵設計 (左、中、右橫向三欄大按鍵＋寬間距，降低腦麻學生誤觸率) */
     .qa-options {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -334,7 +336,8 @@
       .pages-container { padding: 0 !important; }
       .page {
         margin: 0 !important; box-shadow: none !important;
-        width: 100% !important; min-height: auto !important; padding: 0 !important;
+        width: 100% !important; max-width: 100% !important;
+        min-height: auto !important; padding: 0 !important;
       }
       .qa-block {
         display: flex !important;
@@ -609,7 +612,7 @@
       }
     ];
 
-    let currentStepIndex = 0; // 0 ~ 12
+    let currentStepIndex = 0;
     const solvedStatus = new Array(questionsData.length).fill(false);
 
     // 輕柔音效回饋（無外部檔案依賴）
@@ -624,8 +627,8 @@
         gain.connect(ctx.destination);
         if (isSuccess) {
           osc.type = 'sine';
-          osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-          osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); // E5
+          osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+          osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
           gain.gain.setValueAtTime(0.12, ctx.currentTime);
           gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
           osc.start();
@@ -676,40 +679,31 @@
       const blankWord = solvedStatus[qIdx]
         ? q.options.find(o => o.correct).char
         : '，括號，';
-      const optionsText = q.options
-        .map((opt, idx) => `選項 ${idx + 1}，${opt.char}`)
-        .join('；');
 
-      const fullText = `第 ${q.num} 題。${cleanBefore}${blankWord}${q.after}。${optionsText}。`;
+      // 僅報讀題目（不報讀選項），並修正「衣裳」的語音發音為 ㄕㄤ˙（避免系統誤讀為 ㄔㄤˊ）
+      const rawText = `第 ${q.num} 題。${cleanBefore}${blankWord}${q.after}`;
+      const fullText = rawText.replace(/裳/g, '商');
 
       const utterance = new SpeechSynthesisUtterance(fullText);
       utterance.lang = 'zh-TW';
-      utterance.rate = 0.85; // 語速略放慢，方便資源班學生聆聽
+      utterance.rate = 0.85;
 
       activeSpeakBtn = btnEl;
       btnEl.classList.add('speaking');
       btnEl.innerHTML = '🔉 報讀中...';
 
       utterance.onend = function() {
-        if (activeSpeakBtn === btnEl) {
-          btnEl.classList.remove('speaking');
-          btnEl.innerHTML = '🔊 報讀題目';
-          activeSpeakBtn = null;
-        }
+        stopSpeech();
       };
       utterance.onerror = function() {
-        if (activeSpeakBtn === btnEl) {
-          btnEl.classList.remove('speaking');
-          btnEl.innerHTML = '🔊 報讀題目';
-          activeSpeakBtn = null;
-        }
+        stopSpeech();
       };
 
       window.speechSynthesis.speak(utterance);
     }
 
-    // 初始化建立題目與目錄
-    function renderAllQuestions() {
+    // 初始化建立題目卡片與目錄
+    function renderWorksheet() {
       const qContainer = document.getElementById('questionsContainer');
       const tocList = document.getElementById('tocList');
       qContainer.innerHTML = '';
@@ -717,31 +711,33 @@
 
       questionsData.forEach((q, idx) => {
         const correctOpt = q.options.find(o => o.correct);
-        const correctNum = correctOpt.label.match(/\((\d+)\)/)[1];
+        const correctNumMatch = correctOpt.label.match(/\((\d+)\)/);
+        const correctNum = correctNumMatch ? correctNumMatch[1] : '';
 
-        // 題目區塊
+        const optionsHtml = q.options.map((opt, optIdx) => {
+          const correctClass = opt.correct ? 'is-correct' : '';
+          return `
+            <button type="button"
+              class="option-btn ${correctClass}"
+              data-qidx="${idx}"
+              data-optidx="${optIdx}"
+              onclick="handleOptionSelect(${idx}, ${optIdx}, this)">
+              <span>${opt.label}</span>
+              <span class="option-status-icon"></span>
+            </button>
+          `;
+        }).join('');
+
         const block = document.createElement('div');
-        block.className = 'qa-block' + (idx === 0 ? ' active-step' : '');
-        block.id = 'q-' + q.num;
-
-        const optionsHtml = q.options.map((opt, optIdx) => `
-          <button type="button"
-                  class="option-btn ${opt.correct ? 'is-correct' : ''}"
-                  data-qidx="${idx}"
-                  data-optidx="${optIdx}"
-                  onclick="handleOptionClick(${idx}, ${optIdx}, this)">
-            <span>${opt.label}</span>
-            <span class="option-status-icon"></span>
-          </button>
-        `).join('');
-
+        block.className = 'qa-block';
+        block.id = `q-block-${idx}`;
         block.innerHTML = `
           <div class="qa-question-row">
             <div class="qa-stem-group">
               <div class="qa-bracket">（<span class="ans-slot">${correctNum}</span>）</div>
               <div class="qa-question">${q.before}（<span class="ans-slot">${correctOpt.char}</span>）${q.after}</div>
             </div>
-            <button type="button" class="read-aloud-btn no-print" onclick="speakQuestion(${idx}, this)" title="語音報讀題目與選項">🔊 報讀題目</button>
+            <button type="button" class="read-aloud-btn no-print" onclick="speakQuestion(${idx}, this)" title="語音報讀題目">🔊 報讀題目</button>
           </div>
           <div class="qa-options">
             ${optionsHtml}
@@ -749,110 +745,117 @@
         `;
         qContainer.appendChild(block);
 
-        // 目錄項目
+        // 建立懸浮目錄項目
         const tocItem = document.createElement('div');
         tocItem.className = 'toc-menu-item';
-        tocItem.innerHTML = `<span>第 ${q.num} 題</span><span class="toc-page-badge">第 ${q.num} / ${questionsData.length} 題</span>`;
-        tocItem.onclick = () => {
+        const shortStem = q.before.replace(/^\d+\.\s*/, '').slice(0, 8);
+        tocItem.innerHTML = `<span>第 ${q.num} 題：${shortStem}…</span><span class="toc-page-badge">P.1</span>`;
+        tocItem.onclick = function() {
           jumpToQuestion(idx);
-          const menu = document.getElementById('tocMenu');
-          if (menu) menu.classList.remove('show');
         };
         tocList.appendChild(tocItem);
       });
 
-      updateStepUI();
+      updateStepView();
     }
 
-    // 處理學生點擊選項按鍵
-    function handleOptionClick(qIdx, optIdx, btnEl) {
+    // 處理學生點選選項按鍵
+    function handleOptionSelect(qIdx, optIdx, btnEl) {
       if (document.body.classList.contains('pen-mode')) return;
-      if (isAllAnsShown) return;
-
       const q = questionsData[qIdx];
-      const opt = q.options[optIdx];
-      const block = document.getElementById('q-' + q.num);
-      const statusSpan = btnEl.querySelector('.option-status-icon');
+      const chosenOpt = q.options[optIdx];
+      const block = document.getElementById(`q-block-${qIdx}`);
+      const iconSpan = btnEl.querySelector('.option-status-icon');
 
-      if (opt.correct) {
-        playTone(true);
+      if (chosenOpt.correct) {
+        // 答對：標記為已完成、填入紅字答案並解鎖下一題
         solvedStatus[qIdx] = true;
         block.classList.add('solved');
+        btnEl.classList.remove('wrong-picked');
+        btnEl.classList.add('correct-picked');
+        if (iconSpan) iconSpan.textContent = '⭕';
 
-        // 標記正確按鍵並鎖定該題其他錯誤按鍵
-        block.querySelectorAll('.option-btn').forEach((b, i) => {
+        // 鎖定該題所有選項按鍵避免重複誤按
+        block.querySelectorAll('.option-btn').forEach(b => {
           b.disabled = true;
-          if (q.options[i].correct) {
-            b.classList.add('correct-picked');
-            b.querySelector('.option-status-icon').textContent = '⭕';
-          }
         });
 
-        updateStepUI();
+        playTone(true);
+        updateStepView();
       } else {
-        playTone(false);
-        btnEl.classList.remove('wrong-picked');
-        void btnEl.offsetWidth; // 重新觸發動畫
-        btnEl.classList.add('wrong-picked');
-        if (statusSpan) statusSpan.textContent = '❌';
+        // 答錯：輕微搖晃提示並允許學生重新點選正確答案
+        if (!solvedStatus[qIdx]) {
+          btnEl.classList.remove('wrong-picked');
+          void btnEl.offsetWidth; // 觸發重繪讓動畫可重複播放
+          btnEl.classList.add('wrong-picked');
+          if (iconSpan) iconSpan.textContent = '❌';
+          playTone(false);
+        }
       }
     }
 
-    // 更新逐題導覽狀態與進度點
-    function updateStepUI() {
+    // 更新逐題闖關進度列、目前顯示題目與底部按鈕狀態
+    function updateStepView() {
       const total = questionsData.length;
-      document.getElementById('stepCounterText').textContent = `第 ${currentStepIndex + 1} 題 / 共 ${total} 題`;
+      const counterText = document.getElementById('stepCounterText');
+      const dotsContainer = document.getElementById('stepDotsContainer');
+      const prevBtn = document.getElementById('prevStepBtn');
+      const nextBtn = document.getElementById('nextStepBtn');
+      const completeBanner = document.getElementById('completeBanner');
 
-      // 更新active題目卡片
+      if (counterText) {
+        counterText.textContent = `第 ${currentStepIndex + 1} 題 / 共 ${total} 題`;
+      }
+
+      // 切換顯示當前題目
       document.querySelectorAll('.qa-block').forEach((el, idx) => {
         el.classList.toggle('active-step', idx === currentStepIndex);
       });
 
-      // 更新題號進度點（完成第一題才解鎖第二題）
-      const dotsContainer = document.getElementById('stepDotsContainer');
-      dotsContainer.innerHTML = '';
-      for (let i = 0; i < total; i++) {
-        const dot = document.createElement('button');
-        dot.type = 'button';
-        dot.textContent = i + 1;
+      // 重繪上方進度圓點
+      if (dotsContainer) {
+        dotsContainer.innerHTML = '';
+        questionsData.forEach((q, idx) => {
+          const dot = document.createElement('span');
+          dot.textContent = q.num;
+          const isUnlocked = idx === 0 || solvedStatus[idx] || solvedStatus[idx - 1];
 
-        const isUnlocked = (i === 0) || solvedStatus[i - 1] || solvedStatus[i];
-        if (i === currentStepIndex) {
-          dot.className = 'step-dot current';
-        } else if (solvedStatus[i]) {
-          dot.className = 'step-dot completed';
-          dot.onclick = () => { currentStepIndex = i; updateStepUI(); };
-        } else if (isUnlocked) {
-          dot.className = 'step-dot';
-          dot.style.cursor = 'pointer';
-          dot.onclick = () => { currentStepIndex = i; updateStepUI(); };
-        } else {
-          dot.className = 'step-dot locked';
-          dot.disabled = true;
-        }
-        dotsContainer.appendChild(dot);
+          if (idx === currentStepIndex) {
+            dot.className = 'step-dot current';
+          } else if (solvedStatus[idx]) {
+            dot.className = 'step-dot completed';
+          } else if (isUnlocked) {
+            dot.className = 'step-dot';
+            dot.style.cursor = 'pointer';
+          } else {
+            dot.className = 'step-dot locked';
+          }
+
+          if (isUnlocked) {
+            dot.onclick = function() {
+              stopSpeech();
+              currentStepIndex = idx;
+              updateStepView();
+            };
+          }
+          dotsContainer.appendChild(dot);
+        });
       }
 
-      // 上一題 / 下一題 按鍵狀態
-      const prevBtn = document.getElementById('prevStepBtn');
-      const nextBtn = document.getElementById('nextStepBtn');
-      prevBtn.disabled = (currentStepIndex === 0);
-
-      const isCurrentSolved = solvedStatus[currentStepIndex];
-      if (currentStepIndex === total - 1) {
-        nextBtn.style.display = 'none';
-      } else {
-        nextBtn.style.display = 'inline-block';
-        nextBtn.disabled = !isCurrentSolved;
+      // 上一題 / 下一題按鈕狀態
+      if (prevBtn) {
+        prevBtn.disabled = currentStepIndex === 0;
+      }
+      if (nextBtn) {
+        const isLast = currentStepIndex === total - 1;
+        nextBtn.style.visibility = isLast ? 'hidden' : 'visible';
+        nextBtn.disabled = !solvedStatus[currentStepIndex];
       }
 
-      // 檢查是否全部完成
-      const allDone = solvedStatus.every(Boolean);
-      const completeBanner = document.getElementById('completeBanner');
-      if (allDone) {
-        completeBanner.classList.add('show');
-      } else {
-        completeBanner.classList.remove('show');
+      // 檢查是否全部 13 題均已答對
+      const allSolved = solvedStatus.every(Boolean);
+      if (completeBanner) {
+        completeBanner.classList.toggle('show', allSolved);
       }
     }
 
@@ -860,35 +863,37 @@
       if (currentStepIndex > 0) {
         stopSpeech();
         currentStepIndex--;
-        updateStepUI();
+        updateStepView();
       }
     }
 
     function goNextStep() {
-      if (currentStepIndex < questionsData.length - 1 && solvedStatus[currentStepIndex]) {
+      if (solvedStatus[currentStepIndex] && currentStepIndex < questionsData.length - 1) {
         stopSpeech();
         currentStepIndex++;
-        updateStepUI();
+        updateStepView();
       }
     }
 
-    // 教師目錄跳轉（教師透過目錄可直接切換檢視任意題）
     function jumpToQuestion(idx) {
       stopSpeech();
-      if (isAllAnsShown) {
-        const el = document.getElementById('q-' + questionsData[idx].num);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else {
-        currentStepIndex = idx;
-        updateStepUI();
+      currentStepIndex = idx;
+      updateStepView();
+      const menu = document.getElementById('tocMenu');
+      if (menu) menu.classList.remove('show');
+      const targetEl = document.getElementById(`q-block-${idx}`);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
 
     function resetPractice() {
       stopSpeech();
-      solvedStatus.fill(false);
+      for (let i = 0; i < solvedStatus.length; i++) {
+        solvedStatus[i] = false;
+      }
       currentStepIndex = 0;
-      renderAllQuestions();
+      renderWorksheet();
     }
 
     // 0. 目錄面板切換
@@ -924,25 +929,26 @@
         container.classList.remove('show-ans');
         btn.classList.remove('active');
         btnIcon.textContent = '👁️';
-        updateStepUI();
       }
-      setTimeout(resizeAllCanvases, 60);
     }
 
-    // 2. 畫筆工具
+    // 2. 畫筆工具（支援滑鼠與觸控螢幕板書）
     var isPenMode = false;
     var currentPenColor = 'rgba(250, 204, 21, 0.45)';
     var currentPenSize = 20;
+
     function setPenColor(color, el) {
       currentPenColor = color;
       document.querySelectorAll('.color-dot').forEach(function(d) { d.classList.remove('active'); });
       el.classList.add('active');
     }
+
     function setPenSize(size, el) {
       currentPenSize = size;
       document.querySelectorAll('.size-btn').forEach(function(b) { b.classList.remove('active'); });
       el.classList.add('active');
     }
+
     function togglePenMode() {
       isPenMode = !isPenMode;
       document.body.classList.toggle('pen-mode', isPenMode);
@@ -957,67 +963,74 @@
       }
     }
 
-    function resizeAllCanvases() {
-      document.querySelectorAll('.page').forEach(function(page) {
-        var canvas = page.querySelector('.drawing-canvas');
-        if (!canvas) return;
-        var temp = document.createElement('canvas');
-        temp.width = canvas.width;
-        temp.height = canvas.height;
-        temp.getContext('2d').drawImage(canvas, 0, 0);
-        canvas.width = page.clientWidth;
-        canvas.height = page.clientHeight;
-        canvas.getContext('2d').drawImage(temp, 0, 0);
-      });
-    }
-
     function initCanvases() {
       document.querySelectorAll('.page').forEach(function(page) {
         var canvas = page.querySelector('.drawing-canvas');
         if (!canvas) return;
         var ctx = canvas.getContext('2d');
-        canvas.width = page.clientWidth;
-        canvas.height = page.clientHeight;
-        window.addEventListener('resize', resizeAllCanvases);
+
+        function resizeCanvas() {
+          canvas.width = page.clientWidth;
+          canvas.height = page.clientHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
         var isDrawing = false, lastX = 0, lastY = 0;
 
-        function getPos(e) {
+        function getPos(clientX, clientY) {
           var rect = canvas.getBoundingClientRect();
-          var clientX = e.touches ? e.touches[0].clientX : e.clientX;
-          var clientY = e.touches ? e.touches[0].clientY : e.clientY;
           return { x: clientX - rect.left, y: clientY - rect.top };
         }
 
-        function startDraw(e) {
+        function drawStroke(currX, currY) {
+          ctx.beginPath();
+          ctx.moveTo(lastX, lastY);
+          ctx.lineTo(currX, currY);
+          ctx.strokeStyle = currentPenColor;
+          ctx.lineWidth = currentPenSize;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+          lastX = currX;
+          lastY = currY;
+        }
+
+        canvas.addEventListener('mousedown', function(e) {
           if (!isPenMode) return;
           isDrawing = true;
-          var pos = getPos(e);
-          lastX = pos.x; lastY = pos.y;
-        }
-        function moveDraw(e) {
-          if (!isDrawing || !isPenMode) return;
-          if (e.cancelable) e.preventDefault();
-          var pos = getPos(e);
-          ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(pos.x, pos.y);
-          ctx.strokeStyle = currentPenColor; ctx.lineWidth = currentPenSize;
-          ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
-          lastX = pos.x; lastY = pos.y;
-        }
-        function endDraw() { isDrawing = false; }
+          var pos = getPos(e.clientX, e.clientY);
+          lastX = pos.x;
+          lastY = pos.y;
+        });
 
-        canvas.addEventListener('mousedown', startDraw);
-        canvas.addEventListener('mousemove', moveDraw);
-        window.addEventListener('mouseup', endDraw);
-        canvas.addEventListener('touchstart', startDraw, { passive: false });
-        canvas.addEventListener('touchmove', moveDraw, { passive: false });
-        window.addEventListener('touchend', endDraw);
+        canvas.addEventListener('mousemove', function(e) {
+          if (!isDrawing || !isPenMode) return;
+          var pos = getPos(e.clientX, e.clientY);
+          drawStroke(pos.x, pos.y);
+        });
+
+        window.addEventListener('mouseup', function() { isDrawing = false; });
+
+        canvas.addEventListener('touchstart', function(e) {
+          if (!isPenMode || e.touches.length === 0) return;
+          e.preventDefault();
+          isDrawing = true;
+          var pos = getPos(e.touches[0].clientX, e.touches[0].clientY);
+          lastX = pos.x;
+          lastY = pos.y;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', function(e) {
+          if (!isDrawing || !isPenMode || e.touches.length === 0) return;
+          e.preventDefault();
+          var pos = getPos(e.touches[0].clientX, e.touches[0].clientY);
+          drawStroke(pos.x, pos.y);
+        }, { passive: false });
+
+        window.addEventListener('touchend', function() { isDrawing = false; });
       });
     }
-
-    window.addEventListener('load', function() {
-      renderAllQuestions();
-      initCanvases();
-    });
 
     function clearAllDrawings() {
       document.querySelectorAll('.drawing-canvas').forEach(function(canvas) {
@@ -1039,13 +1052,12 @@
       var clonedDoc = document.documentElement.cloneNode(true);
       var container = clonedDoc.querySelector('.pages-container');
       if (container) container.classList.remove('show-ans');
-      clonedDoc.querySelectorAll('.solved, .wrong-picked, .correct-picked').forEach(function(item) {
-        item.classList.remove('solved', 'wrong-picked', 'correct-picked');
+      clonedDoc.querySelectorAll('.solved').forEach(function(item) {
+        item.classList.remove('solved');
       });
-      clonedDoc.querySelectorAll('.option-btn').forEach(function(btn) {
-        btn.disabled = false;
-        var icon = btn.querySelector('.option-status-icon');
-        if (icon) icon.textContent = '';
+      clonedDoc.querySelectorAll('.correct-picked, .wrong-picked').forEach(function(btn) {
+        btn.classList.remove('correct-picked', 'wrong-picked');
+        btn.removeAttribute('disabled');
       });
       var toast = clonedDoc.querySelector('#toastNotice');
       if (toast) toast.remove();
@@ -1086,6 +1098,11 @@
         showToast('無法在新分頁開啟，請嘗試手動下載。');
       }
     }
+
+    window.addEventListener('DOMContentLoaded', function() {
+      renderWorksheet();
+      initCanvases();
+    });
   </script>
 </body>
 </html>
